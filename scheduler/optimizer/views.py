@@ -27,11 +27,12 @@ def get_task_status(status):
 
 
 def index(request):
-    prod_orders = generateschduele()
+    # prod_orders = generateschduele()
     return render(request, 'index.html', {'schedule': 'schedule.png', 'orders': ScheduledActivity.objects.all()})
 
 
 def getschedule(request):
+    print('API Called!!')
     if request.FILES:
         filename = storefile(request.FILES['file'])
         prod_orders = generateschduele(filename)
