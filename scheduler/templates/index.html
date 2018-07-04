@@ -74,22 +74,38 @@ background: aqua;
 
 
 
+
+
+
 </style>
 
 {% endblock %}
 
 {% block content %}
-<div style="">
-    <img style="margin-left: auto;
-	margin-right: auto;
-	display: block;" src="static/{{schedule}}"></img>
+<!--<div style="">-->
+    <!--<img style="margin-left: auto;-->
+	<!--margin-right: auto;-->
+	<!--display: block;" src="static/{{schedule}}"></img>-->
+<!--</div>-->
+<div style="height:450px">
+    <iframe src="static/schedule.html" style="    width: 100%;
+    height: 100%;
+    border: 2px solid red;
+    border-radius: 10px;
+    margin-top: 10px;
+    margin-left: 10px;
+}">
+
+    </iframe>
 </div>
-<div style="margin-left: 50px; padding:10px">
+<div style="margin-left: 50px; padding:10px; margin-top: 20px">
     <table class="blueTable">
         <thead>
         <tr>
             <th>Order ID</th>
+            <th>Product Code</th>
             <th>Product Name</th>
+            <th>Quantity</th>
             <th>Start</th>
             <th>End</th>
             <th>Status</th>
@@ -99,7 +115,9 @@ background: aqua;
         {% for o in orders %}
         <tr>
             <td>{{o.order_id}}</td>
+            <td>{{o.product_id}}</td>
             <td>{{o.product_name}}</td>
+            <td>{{o.quantity}}</td>
             <td>{{o.start_datetime}}</td>
             <td>{{o.end_datetime}}</td>
             <td class="{{ o.status|get_task_status }}">{{ o.status|get_task_status }}</td>

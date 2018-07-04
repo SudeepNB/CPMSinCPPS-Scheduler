@@ -9,6 +9,7 @@ class ScheduledActivity(models.Model):
     order_id = models.CharField(max_length=100)
     product_id = models.CharField(max_length=100)
     product_name = models.CharField(max_length=100)
+    quantity=models.IntegerField(null=True)
     start_datetime = models.CharField(max_length=100)
     end_datetime = models.CharField(max_length=100)
     activitytype = models.CharField(max_length=1)

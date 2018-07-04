@@ -14,6 +14,13 @@ from django.http import JsonResponse
 import json
 from optimizer.models import ScheduledActivity
 from django.template.defaulttags import register
+import pandas as ps
+from bokeh.plotting import figure, show, output_notebook, output_file
+from bokeh.models import ColumnDataSource, Range1d, DatetimeTickFormatter, FixedTicker
+from bokeh.models.tools import HoverTool
+import datetime
+from bokeh.io import export_png
+from bokeh.plotting import output_file, save
 
 
 @register.filter
@@ -74,7 +81,8 @@ def _baseurl(request):
 
 def _storeactivities(orders):
     for order in orders:
-        sa = ScheduledActivity(order_id=order['order_id'], product_id='', product_name=order['product_name'],
+        sa = ScheduledActivity(order_id=order['order_id'], product_id=order['product_id'],
+                               product_name=order['product_name'], quantity=order['quantity'],
                                start_datetime=order['start_date'], end_datetime=order['end_date'], activitytype=0,
                                status=0)
         sa.save()
@@ -92,7 +100,7 @@ def _deletestoredactivities():
 
 Item = namedtuple("Item", ['index', 'requiredTime', 'deadline'])
 Product = namedtuple('Product', ['index', 'name', 'setupTime', 'unitProductionTime'])
-Order_new = namedtuple('Order_new', ['orderID', 'productIndex', 'quantity', 'deadline', 'workIndex'])
+Order_new = namedtuple('Order_new', ['orderID', 'productIndex', 'quantity', 'productcode', 'deadline', 'workIndex'])
 MaintenanceDate_start = 5000
 MaintenanceDate_end = 6000
 
@@ -367,9 +375,10 @@ def get_data(order_data_df, product_data):
     orders = []
     orders_map = {}
     for index, row in order_data_df.iterrows():
-        orders_map.update({row['Production Order Nr.']: row['Name of product']})
+        orders_map.update(
+            {row['Production Order Nr.']: [row['Name of product'], row['Quantity'], row['code of product']]})
         orders.append(
-            Order_new(row['Production Order Nr.'], row['ProductType'], row['Quantity'],
+            Order_new(row['Production Order Nr.'], row['ProductType'], row['Quantity'], row['code of product'],
                       int(gettimestamp(row['End Time'])),
                       index))
 
@@ -468,10 +477,16 @@ def generatescheduledata(list_process_orders, products, orders_map):
             color_index = order[3]
             # x_ticks.append(left)
             if MaintenanceDate_start <= left + value and left <= MaintenanceDate_end:
+                # p_order = {'order_id': 'NA', 'product_name': 'MAINTENANCE',
+                #            'quantity': 0, 'product_id': 'NA',
+                #            'start_date': timestamptodatestring(MaintenanceDate_start),
+                #            'end_date': timestamptodatestring(MaintenanceDate_end)}
+                # final_orders.append(p_order)
                 left = MaintenanceDate_end
             left += value
         order_width = left - start
-        p_order = {'order_id': order_index, 'product_name': orders_map[order_index],
+        p_order = {'order_id': order_index, 'product_name': orders_map[order_index][0],
+                   'quantity': orders_map[order_index][1], 'product_id': orders_map[order_index][2],
                    'start_date': timestamptodatestring(start + setupTime),
                    'end_date': timestamptodatestring(left)}
         final_orders.append(p_order)
@@ -494,13 +509,6 @@ def date_range(start_date, end_date, increment, period):
 
 
 def generate_schedule_graph(final_orders):
-    import pandas as ps
-    from bokeh.plotting import figure, show, output_notebook, output_file
-    from bokeh.models import ColumnDataSource, Range1d, DatetimeTickFormatter, FixedTicker
-    from bokeh.models.tools import HoverTool
-    import datetime
-    from bokeh.io import export_png
-
     DF = ps.DataFrame(columns=['Item', 'Start', 'End', 'Color'])
     items = []
     for order in final_orders:
@@ -521,7 +529,7 @@ def generate_schedule_graph(final_orders):
     )
     tick_vals = pd.to_datetime(date_range(DF.Start_dt.min(), DF.End_dt.max(), 2, 'hours')).astype(int) / 10 ** 6
     G.xaxis.ticker = FixedTicker(ticks=list(tick_vals))
-    hover = HoverTool(tooltips="Task: @Item<br>\
+    hover = HoverTool(tooltips="Product: @Item<br>\
     Start: @Start<br>\
     End: @End")
     G.add_tools(hover)
@@ -533,6 +541,8 @@ def generate_schedule_graph(final_orders):
     # G.rect(,"Item",source=CDS)
     # show(G)
     export_png(G, filename="static/schedule.png")
+    output_file('static/schedule.html', mode='inline')
+    save(G)
 
 
 def plot_schedule(list_process_orders, products, orders_map):
@@ -633,6 +643,7 @@ def plot_schedule(list_process_orders, products, orders_map):
     # plt.show()
     fig.savefig('static/schedule.png')  # save the figure to file
     # plt.close(fig)
+
     return final_orders
 
 
