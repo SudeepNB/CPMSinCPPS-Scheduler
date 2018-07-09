@@ -61,9 +61,14 @@ def storefile(f):
 
 def getnextactivity(request):
     ScheduledActivity.objects.filter(status=1).update(status=2)
-    act = ScheduledActivity.objects.filter(status=0).values()[0]
-    ScheduledActivity.objects.filter(id=act['id']).update(status=1)
-    data = {'next_activity': act}
+    act = ScheduledActivity.objects.filter(status=0).values()
+    if act:
+        n_act=act[0]
+        ScheduledActivity.objects.filter(id=n_act['id']).update(status=1)
+    if act:
+        data = {'next_activity': n_act}
+    else:
+        data = {'next_activity': None}
     return JsonResponse(data, safe=False)
 
 
