@@ -86,7 +86,7 @@ def _baseurl(request):
 
 def _storeactivities(orders):
     for order in orders:
-        sa = ScheduledActivity(order_id=order['order_id'], product_id=order['product_id'],
+        sa = ScheduledActivity(order_id=order['order_id'], product_id=order['product_id'].strip(),
                                product_name=order['product_name'], quantity=order['quantity'],
                                start_datetime=order['start_date'], end_datetime=order['end_date'], activitytype=0,
                                status=0)
@@ -383,7 +383,7 @@ def get_data(order_data_df, product_data):
         orders_map.update(
             {row['Production Order Nr.']: [row['Name of product'], row['Quantity'], row['code of product']]})
         orders.append(
-            Order_new(row['Production Order Nr.'], row['ProductType'], row['Quantity'], row['code of product'],
+            Order_new(row['Production Order Nr.'], 1, row['Quantity'], row['code of product'],
                       int(gettimestamp(row['End Time'])),
                       index))
 
@@ -409,9 +409,9 @@ def get_data(order_data_df, product_data):
     return products, orders, processed_orders, combined_orders, orders_map
 
 
-def generateschduele(file_location="data/Polishing Production Orders JUNHO2017_20180409.xlsx"):
+def generateschduele(file_location="data/PolishingOrders.xlsx"):
     # TODO provide filename
-    # file_location = "data/Polishing Production Orders JUNHO2017_20180409.xlsx"
+    # file_location = "data/PolishingOrders.xlsx"
     capacity = None
 
     # load_data_from_file(file_location)
