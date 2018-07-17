@@ -346,7 +346,7 @@ def load_data_from_file(file_name):
 def gettimestamp(date):
     import time
     import datetime
-    ref_date_str = "5/26/2018 8:00"
+    ref_date_str = datetime.datetime.today().strftime('%m/%d/%Y')+" 8:00"
     ref_date = datetime.datetime.strptime(ref_date_str, "%m/%d/%Y %H:%M")
     m, s = divmod((date - ref_date).seconds, 60)
     return m * 100
@@ -355,7 +355,7 @@ def gettimestamp(date):
 def getstarttimestamp():
     import time
     import datetime
-    ref_date_str = "5/26/2018 8:00"
+    ref_date_str = datetime.datetime.today().strftime('%m/%d/%Y')+" 8:00"
     return int(time.mktime(datetime.datetime.strptime(ref_date_str, "%m/%d/%Y %H:%M").timetuple()))
 
 
