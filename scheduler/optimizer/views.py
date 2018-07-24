@@ -21,6 +21,9 @@ from bokeh.models.tools import HoverTool
 import datetime
 from bokeh.io import export_png
 from bokeh.plotting import output_file, save
+from django.db.models import Q
+
+completed_orders = []
 
 
 @register.filter
@@ -35,7 +38,10 @@ def get_task_status(status):
 
 def index(request):
     # prod_orders = generateschduele()
-    return render(request, 'index.html', {'schedule': 'schedule.png', 'orders': ScheduledActivity.objects.all()})
+    all_orders = ScheduledActivity.objects.values()
+    incomplete_order = ScheduledActivity.objects.filter(~Q(status=2)).values()
+    generate_schedule_graph(all_orders)
+    return render(request, 'index.html', {'schedule': 'schedule.png', 'orders': all_orders})
 
 
 def getschedule(request):
@@ -52,6 +58,29 @@ def getschedule(request):
     return JsonResponse(data, safe=False)
 
 
+from django.views.decorators.csrf import csrf_exempt
+
+
+@csrf_exempt
+def mark_completed(request):
+    order_id = request.POST.get('order_id')
+    _collect_completed_orders()
+    if not order_id:
+        return JsonResponse({'error_msg': 'order id not provided'}, safe=False)
+    ScheduledActivity.objects.filter(order_id=order_id).update(status=2)
+    _deleteincompleteschedules()
+    prod_orders = generateschduele()
+    _storeactivities(prod_orders)
+    data = {'schedule_image': _baseurl(request)['BASE_URL'] + "/static/schedule.png",
+            'next_activity': _getnextscheduledactivity()}
+    return JsonResponse(data, safe=False)
+
+
+def _collect_completed_orders():
+    global completed_orders
+    completed_orders = ScheduledActivity.objects.filter(status=2).values_list('order_id', flat=True)
+
+
 def storefile(f):
     with open('data/PolishingOrder.xlsx', 'wb+') as destination:
         for chunk in f.chunks():
@@ -63,7 +92,7 @@ def getnextactivity(request):
     ScheduledActivity.objects.filter(status=1).update(status=2)
     act = ScheduledActivity.objects.filter(status=0).values()
     if act:
-        n_act=act[0]
+        n_act = act[0]
         ScheduledActivity.objects.filter(id=n_act['id']).update(status=1)
     if act:
         data = {'next_activity': n_act}
@@ -88,7 +117,8 @@ def _storeactivities(orders):
     for order in orders:
         sa = ScheduledActivity(order_id=order['order_id'], product_id=order['product_id'].strip(),
                                product_name=order['product_name'], quantity=order['quantity'],
-                               start_datetime=order['start_date'], end_datetime=order['end_date'], activitytype=0,
+                               start_datetime=order['start_datetime'], end_datetime=order['end_datetime'],
+                               activitytype=0,
                                status=0)
         sa.save()
 
@@ -101,6 +131,10 @@ def _getnextscheduledactivity():
 
 def _deletestoredactivities():
     ScheduledActivity.objects.all().delete()
+
+
+def _deleteincompleteschedules():
+    ScheduledActivity.objects.filter(Q(status=0) | Q(status=1)).delete()
 
 
 Item = namedtuple("Item", ['index', 'requiredTime', 'deadline'])
@@ -346,7 +380,7 @@ def load_data_from_file(file_name):
 def gettimestamp(date):
     import time
     import datetime
-    ref_date_str = datetime.datetime.today().strftime('%m/%d/%Y')+" 8:00"
+    ref_date_str = datetime.datetime.today().strftime('%m/%d/%Y %H:%M')
     ref_date = datetime.datetime.strptime(ref_date_str, "%m/%d/%Y %H:%M")
     m, s = divmod((date - ref_date).seconds, 60)
     return m * 100
@@ -355,7 +389,7 @@ def gettimestamp(date):
 def getstarttimestamp():
     import time
     import datetime
-    ref_date_str = datetime.datetime.today().strftime('%m/%d/%Y')+" 8:00"
+    ref_date_str = datetime.datetime.today().strftime('%m/%d/%Y %H:%M')
     return int(time.mktime(datetime.datetime.strptime(ref_date_str, "%m/%d/%Y %H:%M").timetuple()))
 
 
@@ -379,13 +413,16 @@ def get_data(order_data_df, product_data):
 
     orders = []
     orders_map = {}
+    global completed_orders
+
     for index, row in order_data_df.iterrows():
-        orders_map.update(
-            {row['Production Order Nr.']: [row['Name of product'], row['Quantity'], row['code of product']]})
-        orders.append(
-            Order_new(row['Production Order Nr.'], 1, row['Quantity'], row['code of product'],
-                      int(gettimestamp(row['End Time'])),
-                      index))
+        if str(row['Production Order Nr.']) not in completed_orders:
+            orders_map.update(
+                {row['Production Order Nr.']: [row['Name of product'], row['Quantity'], row['code of product']]})
+            orders.append(
+                Order_new(row['Production Order Nr.'], 1, row['Quantity'], row['code of product'],
+                          int(gettimestamp(row['End Time'])),
+                          index))
 
     # for i in range(1, order_count):
     #     lines = order_lines[i].split(',')
@@ -410,8 +447,6 @@ def get_data(order_data_df, product_data):
 
 
 def generateschduele(file_location="data/PolishingOrders.xlsx"):
-    # TODO provide filename
-    # file_location = "data/PolishingOrders.xlsx"
     capacity = None
 
     # load_data_from_file(file_location)
@@ -492,8 +527,8 @@ def generatescheduledata(list_process_orders, products, orders_map):
         order_width = left - start
         p_order = {'order_id': order_index, 'product_name': orders_map[order_index][0],
                    'quantity': orders_map[order_index][1], 'product_id': orders_map[order_index][2],
-                   'start_date': timestamptodatestring(start + setupTime),
-                   'end_date': timestamptodatestring(left)}
+                   'start_datetime': timestamptodatestring(start + setupTime),
+                   'end_datetime': timestamptodatestring(left), 'status': 0}
         final_orders.append(p_order)
     # final_orders.append({'order_id': '', 'product_name': 'Maintenance',
     #                'start_date': timestamptodatestring(MaintenanceDate_start),
@@ -514,11 +549,19 @@ def date_range(start_date, end_date, increment, period):
 
 
 def generate_schedule_graph(final_orders):
-    DF = ps.DataFrame(columns=['Item', 'Start', 'End', 'Color'])
+    DF = ps.DataFrame(columns=['Item', 'Start', 'End', 'Status', 'Color'])
     items = []
     for order in final_orders:
-        l = [str(order['order_id']) + '-' + order['product_name'], order['start_date'], order['end_date']]
-        l.append('Green')
+        l = [str(order['order_id']) + '-' + order['product_name'], order['start_datetime'], order['end_datetime']]
+        if int(order['status']) == 0:
+            l.append('Pending')
+            l.append('Orange')
+        elif int(order['status']) == 1:
+            l.append('Progress')
+            l.append('Blue')
+        else:
+            l.append('Completed')
+            l.append('Green')
         items.append(l)
     for i, Dat in enumerate(items[::-1]):
         DF.loc[i] = Dat
@@ -536,7 +579,8 @@ def generate_schedule_graph(final_orders):
     G.xaxis.ticker = FixedTicker(ticks=list(tick_vals))
     hover = HoverTool(tooltips="Product: @Item<br>\
     Start: @Start<br>\
-    End: @End")
+    End: @End<br>\
+    Status: @Status")
     G.add_tools(hover)
 
     DF['ID'] = DF.index + 0.8

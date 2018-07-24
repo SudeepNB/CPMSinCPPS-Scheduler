@@ -25,4 +25,5 @@ urlpatterns = [
                   path('', views.index, name='index'),
                   path('generateschedule', views.getschedule, name='generateschedule'),
                   path('getnextactivity', views.getnextactivity, name='getnextactivity'),
+                  path('markcompletedactivity', views.mark_completed, name='markcompletedactivity'),
               ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
