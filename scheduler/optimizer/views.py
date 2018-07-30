@@ -22,8 +22,11 @@ import datetime
 from bokeh.io import export_png
 from bokeh.plotting import output_file, save
 from django.db.models import Q
+import datetime
+from math import pi
 
 completed_orders = []
+working_hrs = [datetime.time(8, 00), datetime.time(12, 00), datetime.time(13, 30), datetime.time(17, 30)]
 
 
 @register.filter
@@ -386,6 +389,11 @@ def gettimestamp(date):
     return m * 100
 
 
+def get_abs_timestamp(date):
+    import time
+    return time.mktime(date.timetuple())
+
+
 def getstarttimestamp():
     import time
     import datetime
@@ -394,10 +402,72 @@ def getstarttimestamp():
 
 
 def timestamptodatestring(timestamp):
+    global working_hrs
+    dt_object = datetime.datetime.fromtimestamp(
+        int(getstarttimestamp() + timestamp))
+    dt_time = dt_object.time()
+    if dt_time < working_hrs[0]:
+        dt_object.replace(hour=working_hrs[0].hour, minute=working_hrs[0].minute)
+    elif working_hrs[0] < dt_time < working_hrs[1]:
+        dt_object = dt_object
+    elif working_hrs[1] < dt_time < working_hrs[2]:
+        dt_object.replace(hour=working_hrs[2].hour, minute=working_hrs[2].minute)
+    elif working_hrs[2] < dt_time < working_hrs[3]:
+        dt_object = dt_object
+    elif dt_time > working_hrs[3]:
+        dt_object += datetime.timedelta(days=1)
+        dt_object.replace(hour=working_hrs[0].hour, minute=working_hrs[0].minute)
+    return dt_object.strftime('%Y-%m-%d %H:%M')
+
+
+def timestatmptodate(timestamp):
     import datetime
     return datetime.datetime.fromtimestamp(
-        int(getstarttimestamp() + timestamp)
-    ).strftime('%Y-%m-%d %H:%M')
+        int(timestamp)
+    )
+
+
+def adjust_time(start_time_stamp, end_time_stamp):
+    global working_hrs
+    dt_object_start = timestatmptodate(start_time_stamp)
+    dt_time_start = dt_object_start.time()
+
+    dt_object_end = timestatmptodate(end_time_stamp)
+
+    start_end_diff = dt_object_end - dt_object_start
+
+    if dt_time_start < working_hrs[0]:
+        dt_object_start = dt_object_start.replace(hour=working_hrs[0].hour, minute=working_hrs[0].minute)
+        dt_object_end = dt_object_end.replace(hour=working_hrs[0].hour + start_end_diff.seconds // 3600,
+                                              minute=working_hrs[0].minute + (start_end_diff.seconds // 60) % 60)
+    elif working_hrs[1] < dt_time_start < working_hrs[2]:
+        dt_object_start = dt_object_start.replace(hour=working_hrs[2].hour, minute=working_hrs[2].minute)
+        dt_object_end = dt_object_end.replace(hour=working_hrs[2].hour + start_end_diff.seconds // 3600,
+                                              minute=working_hrs[2].minute + (start_end_diff.seconds // 60) % 60)
+    elif dt_time_start > working_hrs[3]:
+        dt_object_start += datetime.timedelta(days=1)
+        dt_object_end += datetime.timedelta(days=1)
+        dt_object_start = dt_object_start.replace(hour=working_hrs[0].hour, minute=working_hrs[0].minute)
+        dt_object_end = dt_object_end.replace(hour=working_hrs[0].hour + start_end_diff.seconds // 3600,
+                                              minute=working_hrs[0].minute + (start_end_diff.seconds // 60) % 60)
+    # # TODO conditions when the task is not completed within work hrs
+    dt_time_end_new = dt_object_end.time()
+    dt_time_start_new = dt_object_start.time()
+    start_end_diff = dt_object_end - dt_object_start
+
+    if dt_time_start_new < working_hrs[1] and dt_time_end_new > working_hrs[1]:
+        dt_object_start = dt_object_start.replace(hour=working_hrs[2].hour, minute=working_hrs[2].minute)
+        dt_object_end = dt_object_end.replace(hour=working_hrs[2].hour + start_end_diff.seconds // 3600,
+                                              minute=working_hrs[2].minute + (start_end_diff.seconds // 60) % 60)
+    elif dt_time_end_new > working_hrs[3]:
+        dt_object_start += datetime.timedelta(days=1)
+        dt_object_end += datetime.timedelta(days=1)
+        dt_object_start = dt_object_start.replace(hour=working_hrs[0].hour, minute=working_hrs[0].minute)
+        dt_object_end = dt_object_end.replace(hour=working_hrs[0].hour + start_end_diff.seconds // 3600,
+                                              minute=working_hrs[0].minute + (start_end_diff.seconds // 60) % 60)
+
+    return dt_object_start.strftime('%Y-%m-%d %H:%M'), dt_object_end.strftime('%Y-%m-%d %H:%M'), get_abs_timestamp(
+        dt_object_end)
 
 
 def get_data(order_data_df, product_data):
@@ -494,7 +564,7 @@ def generateschduele(file_location="data/PolishingOrders.xlsx"):
 
 
 def generatescheduledata(list_process_orders, products, orders_map):
-    left = 0
+    left = getstarttimestamp()
     color_index = -1
     start = 0
     final_orders = []
@@ -512,27 +582,19 @@ def generatescheduledata(list_process_orders, products, orders_map):
                 setupTime = [(product.setupTime) + 90 for product in products if product.index == order[3]]
             setupTime = setupTime[0]
             # if color_index != order[3]:
-            value = order[1] + setupTime
+            value = order[1]
             left += setupTime
             color_index = order[3]
             # x_ticks.append(left)
             if MaintenanceDate_start <= left + value and left <= MaintenanceDate_end:
-                # p_order = {'order_id': 'NA', 'product_name': 'MAINTENANCE',
-                #            'quantity': 0, 'product_id': 'NA',
-                #            'start_date': timestamptodatestring(MaintenanceDate_start),
-                #            'end_date': timestamptodatestring(MaintenanceDate_end)}
-                # final_orders.append(p_order)
                 left = MaintenanceDate_end
             left += value
-        order_width = left - start
+        start_dt, end_dt, left = adjust_time(start + setupTime, left)
         p_order = {'order_id': order_index, 'product_name': orders_map[order_index][0],
                    'quantity': orders_map[order_index][1], 'product_id': orders_map[order_index][2],
-                   'start_datetime': timestamptodatestring(start + setupTime),
-                   'end_datetime': timestamptodatestring(left), 'status': 0}
+                   'start_datetime': start_dt,
+                   'end_datetime': end_dt, 'status': 0}
         final_orders.append(p_order)
-    # final_orders.append({'order_id': '', 'product_name': 'Maintenance',
-    #                'start_date': timestamptodatestring(MaintenanceDate_start),
-    #                'end_date': timestamptodatestring(MaintenanceDate_end)})
     generate_schedule_graph(final_orders)
     return final_orders
 
@@ -570,11 +632,12 @@ def generate_schedule_graph(final_orders):
     G = figure(title='Polishing Schedule', x_axis_type='datetime', width=1200, height=400, y_range=DF.Item.tolist(),
                x_range=Range1d(DF.Start_dt.min(), DF.End_dt.max(), min_interval=datetime.timedelta(minutes=30)))
     G.xaxis.formatter = DatetimeTickFormatter(
-        hours=["%d %B %Y %H:%m"],
-        days=["%d %B %Y %H:%m"],
-        months=["%d %B %Y %H:%m"],
-        years=["%d %B %Y %H:%m"],
+        hours=["%d %b %y, %H:%m"],
+        days=["%d %b %y, %H:%m"],
+        months=["%d %b %y, %H:%m"],
+        years=["%d %b %y, %H:%m"],
     )
+    G.xaxis.major_label_orientation = pi/3
     tick_vals = pd.to_datetime(date_range(DF.Start_dt.min(), DF.End_dt.max(), 2, 'hours')).astype(int) / 10 ** 6
     G.xaxis.ticker = FixedTicker(ticks=list(tick_vals))
     hover = HoverTool(tooltips="Product: @Item<br>\
@@ -586,114 +649,15 @@ def generate_schedule_graph(final_orders):
     DF['ID'] = DF.index + 0.8
     DF['ID1'] = DF.index + 1.2
     CDS = ColumnDataSource(DF)
-    G.quad(left='Start_dt', right='End_dt', bottom='ID', top='ID1', source=CDS, color="Color")
+    G.quad(left='Start_dt', right='End_dt', bottom='ID', top='ID1', source=CDS, color="Color", legend='Status',
+           alpha=0.8
+           )
+    G.legend.click_policy = "hide"
     # G.rect(,"Item",source=CDS)
     # show(G)
     export_png(G, filename="static/schedule.png")
     output_file('static/schedule.html', mode='inline')
     save(G)
-
-
-def plot_schedule(list_process_orders, products, orders_map):
-    import matplotlib.patches as mpatches
-
-    # make sure colors is greater than number of products
-    colors = get_color_pallet(50)
-    hatches = ('-', '+', 'x', '\\', '*', 'o', 'O', '.')
-
-    values = np.array(list_process_orders)
-    fig = plt.figure(figsize=(20, 5), dpi=80, facecolor='w', edgecolor='k')
-    ax1 = fig.add_subplot(111)
-    # ax2 = fig.add_subplot(211)
-    left = 0
-    color_index = -1
-    start = 0
-    x_ticks = [0]
-    y_ticks = [0]
-    top = 1
-    ax1.axvline(x=left, color='black')
-    ax1.axvline(x=MaintenanceDate_start, color='red')
-    ax1.axvline(x=MaintenanceDate_end, color='red')
-    final_orders = []
-    for j, process_orders in enumerate(list_process_orders):
-        order_width = 0
-        order_index = -1
-        for i, order in enumerate(process_orders):
-            order_index = order[0]
-            value = order[1]
-            if i == 0:
-                start = left
-            if color_index != -1:
-                setupTime = [(product.setupTime) + 15 for product in products if product.index == color_index]
-            else:
-                setupTime = [(product.setupTime) + 90 for product in products if product.index == order[3]]
-            setupTime = setupTime[0]
-            # if color_index != order[3]:
-            value = order[1] + setupTime
-            ax1.axvline(x=left, color='yellow', alpha=0.4)
-            x_ticks.append(left)
-            left += setupTime
-            ax1.axvline(x=left, color='yellow', alpha=0.4)
-            x_ticks.append(left)
-            color_index = order[3]
-            # x_ticks.append(left)
-            if MaintenanceDate_start <= left + value and left <= MaintenanceDate_end:
-                left = MaintenanceDate_end
-
-            ax1.barh(y=top, left=left, width=value, linewidth=0.5,
-                     color=colors[color_index], tick_label='test')
-
-            left += value
-            x_ticks.extend(list(range(value, left)))
-            top += 1
-
-            y_ticks.append(top)
-        ax1.text((start + left) / 2, 0, 'O_%i' % order_index, size=8, ha='center')
-        ax1.axvline(x=left, color='black')
-        order_width = left - start
-        p_order = {'order_id': order_index, 'product_name': orders_map[order_index],
-                   'start_date': timestamptodatestring(start + setupTime),
-                   'end_date': timestamptodatestring(left)}
-        ax1.barh(y=0, left=start, width=order_width, linewidth=1,
-                 label='O_%i' % order_index)
-        final_orders.append(p_order)
-    new_x_ticks = x_ticks
-    ax1.set_xticks(list(set(new_x_ticks))[::200])
-    ax1.set_xticklabels(list(set(new_x_ticks))[::200], rotation=90)
-    # ax2.set_xticks(new_x_ticks)
-
-    ax1.set_yticks([])
-    # ax2.set_yticks([])
-
-    ax1.set_xlim(xmin=0)
-    # ax2.set_xlim(xmin=0)
-
-    # ax2.set_xlabel("Orders with time")
-    ax1.set_ylabel("Machine 0")
-    # ax2.set_ylabel("Machine 0")
-
-    # set titles
-    ax1.set_title('Polishing Schedule')
-    # ax2.set_title('Orders schedule')
-
-    # Legend For Colors
-    patch_list = []
-
-    # for order, color in zip(list_process_orders, colors):
-    #     data_key = mpatches.Patch(color=color, label= "Order_%i" %order[0][0])
-    #     patch_list.append(data_key)
-    for product, color in zip(products, colors):
-        data_key = mpatches.Patch(color=color, label=product.name)
-        patch_list.append(data_key)
-    ax1.legend(handles=patch_list, loc="best", bbox_to_anchor=(1.0, 1.00))
-
-    # ax2.legend(loc="best", bbox_to_anchor=(1.0, 1.00))
-    plt.tick_params(axis='both', labelsize=6)
-    # plt.show()
-    fig.savefig('static/schedule.png')  # save the figure to file
-    # plt.close(fig)
-
-    return final_orders
 
 
 def maintainprocessedhistory():
