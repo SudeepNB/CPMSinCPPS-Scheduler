@@ -1,3 +1,4 @@
+
 from django.http import HttpResponse
 # Create your views here.
 
@@ -27,8 +28,6 @@ from math import pi
 
 completed_orders = []
 working_hrs = [datetime.time(8, 00), datetime.time(12, 00), datetime.time(13, 30), datetime.time(17, 30)]
-
-
 def read_productiontime():
     df = pd.read_excel(io='data/productiontime_20180730.xlsx')
     prod_time = {}
@@ -37,18 +36,15 @@ def read_productiontime():
             row['production time']) * 3600 / 3000) / 10
     return prod_time
 
-
 def read_actual_productiontime():
     df = pd.read_excel(io='data/productiontime_20180730.xlsx')
     prod_time = {}
     for index, row in df.iterrows():
         prod_time[row['product type identifier'].split('-')[1] + str(int(row['Quality']))] = (float(
-            row['production time']) / 3000)
+            row['production time'])/3000)
     return prod_time
 
-
 prod_time = read_productiontime()
-
 
 @register.filter
 def get_task_status(status):
@@ -457,16 +453,17 @@ def adjust_time(start_time_stamp, end_time_stamp):
     dt_object_end = timestatmptodate(end_time_stamp)
 
     start_end_diff = dt_object_end - dt_object_start
+
     if dt_time_start < working_hrs[0]:
         dt_object_start = dt_object_start.replace(hour=working_hrs[0].hour, minute=working_hrs[0].minute)
         work_hr = int(working_hrs[0].hour) * 3600 + int(working_hrs[0].minute) * 60 + start_end_diff.seconds
         m, s = divmod(work_hr, 60)
         hr, m = divmod(m, 60)
-        dt_object_end = dt_object_end.replace(hour=hr, minute=m)
         # if m>59:
         #     hr+=1
         # if hr<24:
-        #
+        #     dt_object_end = dt_object_end.replace(hour=hr if hr<24 else 23,
+        #                                       minute=m if m<60 else 0)
         # else:
 
     elif working_hrs[1] < dt_time_start < working_hrs[2]:
@@ -474,8 +471,8 @@ def adjust_time(start_time_stamp, end_time_stamp):
         work_hr = int(working_hrs[2].hour) * 3600 + int(working_hrs[2].minute) * 60 + start_end_diff.seconds
         m, s = divmod(work_hr, 60)
         hr, m = divmod(m, 60)
-        dt_object_end = dt_object_end.replace(hour=hr,
-                                              minute=m)
+        dt_object_end = dt_object_end.replace(hour=hr if hr<24 else 23,
+                                              minute=m if m<60 else 0)
     elif dt_time_start > working_hrs[3]:
         dt_object_start += datetime.timedelta(days=1)
         dt_object_end += datetime.timedelta(days=1)
@@ -483,8 +480,8 @@ def adjust_time(start_time_stamp, end_time_stamp):
         m, s = divmod(work_hr, 60)
         hr, m = divmod(m, 60)
         dt_object_start = dt_object_start.replace(hour=working_hrs[0].hour, minute=working_hrs[0].minute)
-        dt_object_end = dt_object_end.replace(hour=hr,
-                                              minute=m)
+        dt_object_end = dt_object_end.replace(hour=hr if hr<24 else 23,
+                                              minute=m if m<60 else 0)
     dt_time_end_new = dt_object_end.time()
     dt_time_start_new = dt_object_start.time()
     start_end_diff = dt_object_end - dt_object_start
@@ -494,8 +491,8 @@ def adjust_time(start_time_stamp, end_time_stamp):
         work_hr = int(working_hrs[2].hour) * 3600 + int(working_hrs[2].minute) * 60 + start_end_diff.seconds
         m, s = divmod(work_hr, 60)
         h, m = divmod(m, 60)
-        dt_object_end = dt_object_end.replace(hour=h,
-                                              minute=m)
+        dt_object_end = dt_object_end.replace(hour=h if h<24 else 23,
+                                              minute=m if m<60 else 0)
     elif dt_time_end_new > working_hrs[3]:
         dt_object_start += datetime.timedelta(days=1)
         dt_object_end += datetime.timedelta(days=1)
@@ -503,26 +500,18 @@ def adjust_time(start_time_stamp, end_time_stamp):
         work_hr = int(working_hrs[0].hour) * 3600 + int(working_hrs[0].minute) * 60 + start_end_diff.seconds
         m, s = divmod(work_hr, 60)
         h, m = divmod(m, 60)
-        dt_object_end = dt_object_end.replace(hour=h,
-                                              minute=m)
-    #Adjust for weekends
-
-    import calendar
-    w_day=calendar.day_name[dt_object_start.weekday()]
-    if w_day=='Saturday':
-        dt_object_start += datetime.timedelta(days=2)
-        dt_object_end += datetime.timedelta(days=2)
-    elif w_day=='Sunday':
-        dt_object_start += datetime.timedelta(days=1)
-        dt_object_end += datetime.timedelta(days=1)
+        dt_object_end = dt_object_end.replace(hour=h if h<24 else 23,
+                                              minute=m if m<60 else 0)
 
     return dt_object_start.strftime('%Y-%m-%d %H:%M'), dt_object_end.strftime('%Y-%m-%d %H:%M'), get_abs_timestamp(
         dt_object_end)
 
 
-# prod_time={'02':3.33/10,'05':2.86/10,'21':2.33/10}
-quality_map = {'0': ['4', '6', '8'], '1': ['7', '9', '11', '12']}
 
+
+
+# prod_time={'02':3.33/10,'05':2.86/10,'21':2.33/10}
+quality_map={'0':['4','6','8'],'1':['7','9','11','12']}
 
 def get_data(order_data_df, product_data):
     product_lines = product_data.split('\n')
@@ -539,57 +528,59 @@ def get_data(order_data_df, product_data):
     orders_map = {}
     global completed_orders
     global quality_map
-    prod_times = read_actual_productiontime()
+    prod_times=read_actual_productiontime()
     for index, row in order_data_df.iterrows():
         import re
 
         prod_type = re.findall("\d+", row['code of product'])[0]
-        if len(prod_type) == 4:
-            quality_code = prod_type[:1]
+        if len(prod_type)==4:
+            quality_code=prod_type[:1]
         else:
-            quality_code = prod_type[:2]
+            quality_code=prod_type[:2]
 
         if quality_code in quality_map['0']:
-            quality = 0
+            quality=0
         else:
-            quality = 1
-        prod_type = re.findall("\d+", row['code of product'])[0][-2:] + str(quality)
+            quality=1
+        prod_type = re.findall("\d+",  row['code of product'])[0][-2:] + str(quality)
 
-        unit_time = prod_times[prod_type] if prod_type in prod_times else 3 / 30000
-        total_time = row['Quantity'] * unit_time
-        max_order_quantity = int(3 / unit_time)
+        unit_time = prod_times[prod_type] if prod_type in prod_times else 3/30000
+        total_time=row['Quantity']*unit_time
+        max_order_quantity=int(4/unit_time)
+        if str(row['Production Order Nr.']) not in completed_orders:
+            orders_map.update(
+                {row['Production Order Nr.']: [row['Name of product'], row['Quantity'], row['code of product']]})
+            orders.append(
+                Order_new(row['Production Order Nr.'], 1, row['Quantity'], row['code of product'],
+                          int(gettimestamp(row['End Time'])),
+                          index, quality))
+        # if row['Quantity']>max_order_quantity:
+        #     lot = max_order_quantity
+        #     remaining=row['Quantity']
+        #     count=1
+        #     while True:
+        #         if str(str(row['Production Order Nr.'])+'_'+str(count)) not in completed_orders:
+        #             orders_map.update(
+        #                 {str(row['Production Order Nr.'])+'_'+str(count): [row['Name of product'], lot, row['code of product']]})
+        #             orders.append(
+        #                 Order_new(str(row['Production Order Nr.'])+'_'+str(count), 1, lot, row['code of product'],
+        #                           int(gettimestamp(row['End Time'])),
+        #                           index, quality))
+        #             count+=1
+        #             remaining-=lot
+        #             if remaining<=0:
+        #                 import ipdb
+        #                 ipdb.set_trace()
+        #                 break
+        #             if remaining>max_order_quantity:
+        #                 lot=max_order_quantity
+        #             else:
+        #                 lot=remaining
+        #
+        #
+        # else:
 
-        if row['Quantity'] > max_order_quantity:
-            lot = max_order_quantity
-            remaining = row['Quantity']
-            count = 1
-            while True:
-                if str(str(row['Production Order Nr.']) + '_' + str(count)) not in completed_orders:
-                    orders_map.update(
-                        {str(row['Production Order Nr.']) + '_' + str(count): [row['Name of product'], lot,
-                                                                               row['code of product']]})
-                    orders.append(
-                        Order_new(str(row['Production Order Nr.']) + '_' + str(count), 1, lot, row['code of product'],
-                                  int(gettimestamp(row['End Time'])),
-                                  index, quality))
-                    count += 1
-                    remaining -= lot
-                    if remaining <= 0:
-                        break
-                    if remaining > max_order_quantity:
-                        lot = max_order_quantity
-                    else:
-                        lot = remaining
 
-
-        else:
-            if str(row['Production Order Nr.']) not in completed_orders:
-                orders_map.update(
-                    {row['Production Order Nr.']: [row['Name of product'], row['Quantity'], row['code of product']]})
-                orders.append(
-                    Order_new(row['Production Order Nr.'], 1, row['Quantity'], row['code of product'],
-                              int(gettimestamp(row['End Time'])),
-                              index, quality))
 
     # for i in range(1, order_count):
     #     lines = order_lines[i].split(',')
@@ -603,7 +594,7 @@ def get_data(order_data_df, product_data):
 
         prod_type = re.findall("\d+", order.productcode)[0][-2:] + str(order.quality)
         global prod_time
-        unit_time = prod_time[prod_type] if prod_type in prod_time else 3 / 30000
+        unit_time = prod_time[prod_type] if prod_type in prod_time else 3/30000
         processed_orders.append([order.orderID, int(order.quantity * unit_time
                                                     + product[0].setupTime),
                                  order.deadline, order[1]])
@@ -715,30 +706,23 @@ def date_range(start_date, end_date, increment, period):
 def generate_schedule_graph(final_orders):
     DF = ps.DataFrame(columns=['Item', 'Start', 'End', 'Status', 'Color'])
     items = []
-    dt = datetime.datetime.today()
-    start = dt - datetime.timedelta(days=dt.weekday())
-    end = start + datetime.timedelta(days=14)
-    # limit = datetime.datetime.today() + datetime.timedelta(days=7)
-    today=datetime.datetime.today()
     for order in final_orders:
-        if start<=datetime.datetime.strptime(order['end_datetime'], '%Y-%m-%d %H:%M')<=end:
-            l = [str(order['order_id']) + '-' + order['product_name'], order['start_datetime'], order['end_datetime']]
-            if int(order['status']) == 0:
-                l.append('Pending')
-                l.append('Orange')
-            elif int(order['status']) == 1:
-                l.append('Progress')
-                l.append('Blue')
-            else:
-                l.append('Completed')
-                l.append('Green')
-            items.append(l)
+        l = [str(order['order_id']) + '-' + order['product_name'], order['start_datetime'], order['end_datetime']]
+        if int(order['status']) == 0:
+            l.append('Pending')
+            l.append('Orange')
+        elif int(order['status']) == 1:
+            l.append('Progress')
+            l.append('Blue')
+        else:
+            l.append('Completed')
+            l.append('Green')
+        items.append(l)
     for i, Dat in enumerate(items[::-1]):
         DF.loc[i] = Dat
     DF['Start_dt'] = ps.to_datetime(DF.Start)
     DF['End_dt'] = ps.to_datetime(DF.End)
-
-    G = figure(title='Polishing Schedule (Bi-Weekly)', x_axis_type='datetime', width=1200, height=400, y_range=DF.Item.tolist(),
+    G = figure(title='Polishing Schedule', x_axis_type='datetime', width=1200, height=400, y_range=DF.Item.tolist(),
                x_range=Range1d(DF.Start_dt.min(), DF.End_dt.max(), min_interval=datetime.timedelta(minutes=30)))
     G.xaxis.formatter = DatetimeTickFormatter(
         hours=["%d %b %y, %H:%m"],
