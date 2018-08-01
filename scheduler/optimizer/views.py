@@ -24,12 +24,15 @@ from bokeh.plotting import output_file, save
 from django.db.models import Q
 import datetime
 from math import pi
+import re
 
 completed_orders = []
 working_hrs = [datetime.time(8, 00), datetime.time(12, 00), datetime.time(13, 30), datetime.time(17, 30)]
+quality_map = {'0': ['4', '6', '8'], '1': ['7', '9', '11', '12']}
 
 
 def read_productiontime():
+    global quality_map
     df = pd.read_excel(io='data/productiontime_20180730.xlsx')
     prod_time = {}
     for index, row in df.iterrows():
@@ -39,6 +42,7 @@ def read_productiontime():
 
 
 def read_actual_productiontime():
+    global quality_map
     df = pd.read_excel(io='data/productiontime_20180730.xlsx')
     prod_time = {}
     for index, row in df.iterrows():
@@ -106,10 +110,10 @@ def _collect_completed_orders():
 
 
 def storefile(f):
-    with open('data/PolishingOrders_new.xlsx', 'wb+') as destination:
+    with open('data/PolishingOrders.xlsx', 'wb+') as destination:
         for chunk in f.chunks():
             destination.write(chunk)
-    return 'data/PolishingOrders_new.xlsx'
+    return 'data/PolishingOrders.xlsx'
 
 
 def getnextactivity(request):
@@ -521,7 +525,7 @@ def adjust_time(start_time_stamp, end_time_stamp):
 
 
 # prod_time={'02':3.33/10,'05':2.86/10,'21':2.33/10}
-quality_map = {'0': ['4', '6', '8'], '1': ['7', '9', '11', '12']}
+
 
 
 def get_data(order_data_df, product_data):
@@ -541,7 +545,6 @@ def get_data(order_data_df, product_data):
     global quality_map
     prod_times = read_actual_productiontime()
     for index, row in order_data_df.iterrows():
-        import re
 
         prod_type = re.findall("\d+", row['code of product'])[0]
         if len(prod_type) == 4:
@@ -599,7 +602,6 @@ def get_data(order_data_df, product_data):
     for order in orders:
         # in format Order(requiredTime, deadline)
         product = [p for p in products if p.index == order.productIndex]
-        import re
 
         prod_type = re.findall("\d+", order.productcode)[0][-2:] + str(order.quality)
         global prod_time
@@ -618,7 +620,7 @@ def get_data(order_data_df, product_data):
     return products, orders, processed_orders, combined_orders, orders_map
 
 
-def generateschduele(file_location="data/PolishingOrders_new.xlsx"):
+def generateschduele(file_location="data/PolishingOrders.xlsx"):
     capacity = None
 
     # load_data_from_file(file_location)
@@ -747,7 +749,7 @@ def generate_schedule_graph(final_orders):
         years=["%d %b %y, %H:%m"],
     )
     G.xaxis.major_label_orientation = pi / 3
-    tick_vals = pd.to_datetime(date_range(DF.Start_dt.min(), DF.End_dt.max(), 2, 'hours')).astype(int) / 10 ** 6
+    tick_vals = pd.to_datetime(date_range(DF.Start_dt.min(), DF.End_dt.max(), 4, 'hours')).astype(int) / 10 ** 6
     G.xaxis.ticker = FixedTicker(ticks=list(tick_vals))
     hover = HoverTool(tooltips="Product: @Item<br>\
     Start: @Start<br>\
